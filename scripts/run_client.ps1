@@ -21,59 +21,29 @@ if (-not (Test-Path $clientPath)) {
 
 Set-Location $clientPath
 
-# Auto-detect and run - use Flutter's machine-readable output for reliable parsing
+# Auto-detect and run - simple text-based parsing (proven to work)
 $emulatorFound = $false
 $phoneFound = $false
 $emulatorId = $null
 $phoneId = $null
 $phoneName = $null
 
-# Try to get devices in JSON format (more reliable)
-try {
-    $devicesJson = flutter devices --machine 2>&1 | Out-String
-    $devices = $devicesJson | ConvertFrom-Json
-    
-    foreach ($device in $devices) {
-        # Skip non-Android devices
-        if ($device.platform -ne "android") { continue }
-        
-        # Check if it's an emulator
-        if ($device.id -match "emulator-(\d+)") {
-            $emulatorFound = $true
-            $emulatorId = $device.id
-            continue
-        }
-        
-        # This is a physical Android device
-        if (-not $phoneFound) {
-            $phoneFound = $true
-            $phoneName = $device.name
-            $phoneId = $device.id
-        }
+# Get devices output - use exact same method as working code
+$devicesOutput = flutter devices 2>&1 | Out-String
+$lines = $devicesOutput -split "`n"
+
+foreach ($line in $lines) {
+    # Check for emulator
+    if ($line -match "emulator-(\d+)") {
+        $emulatorFound = $true
+        $emulatorId = $matches[0]
     }
-} catch {
-    # Fallback to text parsing if JSON fails
-    $devicesOutput = flutter devices 2>&1 | Out-String
-    $lines = $devicesOutput -split "`r?`n"
-    
-    foreach ($line in $lines) {
-        $trimmedLine = $line.Trim()
-        if ([string]::IsNullOrWhiteSpace($trimmedLine)) { continue }
-        if ($trimmedLine -notmatch "\(mobile\)") { continue }
-        
-        # Check for emulator
-        if ($trimmedLine -match "emulator-(\d+)") { 
-            $emulatorFound = $true
-            $emulatorId = $matches[0]
-            continue 
-        }
-        
-        # Extract phone info - flexible pattern
-        if ($trimmedLine -match "([^\s].+?)\s+\(mobile\).*?•\s+([a-f0-9]+)") {
+    # Check for connected Android phone (not emulator) - exact pattern from working code
+    if ($line -match "android" -and $line -notmatch "emulator" -and $line -match "mobile") {
+        if ($line -match "([^(]+)\s+\(mobile\)\s+•\s+([a-f0-9]+)") {
             $phoneFound = $true
             $phoneName = $matches[1].Trim()
             $phoneId = $matches[2].Trim()
-            break
         }
     }
 }
